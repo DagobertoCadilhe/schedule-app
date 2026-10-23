@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reminder Planner</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --text:#1c2230; --muted:#6b7385; --line:#e3e6ec;
+  --accent:#4f6ef7; --accent-text:#fff; --danger:#d64545; --today:#eef1ff;
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#12141a; --panel:#1b1e27; --text:#e8eaf0; --muted:#8e96a8; --line:#2b3040; --today:#222845; --accent:#7189ff;
+}
+.toast button{margin-top:6px;padding:3px 10px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+button.danger{color:var(--danger)}
+input,select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:18px;margin:0 12px 0 0}
+.spacer{flex:1}
+main{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:16px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.week{overflow:auto;max-height:calc(100vh - 110px)}
+.week-head,.week-body{display:grid;grid-template-columns:48px repeat(7,minmax(90px,1fr))}
+.week-head{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
+.dh{padding:8px 4px;text-align:center;font-weight:600;border-left:1px solid var(--line)}
+.dh small{display:block;color:var(--muted);font-weight:400}
+.dh.today{background:var(--today);color:var(--accent)}
+.gutter div{height:48px;font-size:11px;color:var(--muted);text-align:right;padding-right:6px;transform:translateY(-7px)}
+.col{position:relative;border-left:1px solid var(--line);
+  background:repeating-linear-gradient(to bottom,transparent 0,transparent 47px,var(--line) 47px,var(--line) 48px)}
+.col.today{background-color:var(--today)}
+.ev{position:absolute;border-radius:6px;padding:2px 6px;font-size:12px;overflow:hidden;color:#fff;cursor:pointer;border:1px solid rgba(0,0,0,.15)}
+.ev b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now{position:absolute;left:0;right:0;height:2px;background:var(--danger);z-index:3;pointer-events:none}
+aside{display:flex;flex-direction:column;gap:16px}
+aside .card{padding:14px}
+aside h2{font-size:14px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.timer{font-size:48px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.phase{text-align:center;color:var(--muted);margin-bottom:8px}
+.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
+.upcoming li{display:flex;gap:8px;align-items:center;padding:4px 0}
+.upcoming ul{list-style:none;margin:0;padding:0}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.muted{color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);width:min(420px,92vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog label{display:block;margin-top:10px;font-size:12px;color:var(--muted)}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chips label{margin:0;display:flex;align-items:center;gap:4px;color:var(--text);border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer}
+.chips input{width:auto}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:50}
+.toast{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:320px}
+.catrow{display:flex;gap:8px;align-items:center;margin-top:6px}
+.catrow input[type=color]{width:40px;padding:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Reminder Planner</h1>
+  <button id="prev" aria-label="Previous week">‹</button>
+  <button id="todayBtn">Today</button>
+  <button id="next" aria-label="Next week">›</button>
+  <strong id="range"></strong>
+  <span class="spacer"></span>
+  <button id="themeBtn" title="Toggle dark / light">Theme</button>
+  <button id="notifBtn" hidden>Enable notifications</button>
+  <button id="catBtn">Categories</button>
+  <button id="resetBtn" title="Replace everything with the default weekly schedule">Default week</button>
+  <button id="addBtn" class="primary">+ New event</button>
+</header>
+
+<main>
+  <section class="card week" id="weekCard">
+    <div class="week-head" id="weekHead"></div>
+    <div class="week-body" id="weekBody"></div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>Pomodoro</h2>
+      <div class="phase" id="activity"></div>
+      <div class="phase" id="phase">Focus</div>
+      <div class="timer" id="timer">25:00</div>
+      <div class="muted" style="text-align:center" id="sessions"></div>
+      <div class="row">
+        <button id="pStart" class="primary">Start</button>
+        <button id="pSkip">Skip</button>
+        <button id="pReset">Reset</button>
+      </div>
+      <div class="two" style="margin-top:10px">
+        <label class="muted">Focus (min)<input type="number" id="sFocus" min="1" max="180"></label>
+        <label class="muted">Short break<input type="number" id="sShort" min="1" max="60"></label>
+        <label class="muted">Long break<input type="number" id="sLong" min="1" max="90"></label>
+        <label class="muted">Long every<input type="number" id="sEvery" min="2" max="10"></label>
+      </div>
+    </div>
+    <div class="card upcoming">
+      <h2>Next up today</h2>
+      <ul id="upcoming"></ul>
+    </div>
+  </aside>
+</main>
+
+<dialog id="evDlg">
+  <form method="dialog" id="evForm">
+    <h3 id="evTitleH" style="margin:0">New event</h3>
+    <label>Title<input id="fTitle" required></label>
+    <label>Category<select id="fCat"></select></label>
+    <div class="two">
+      <label>Start<input type="time" id="fStart" required></label>
+      <label>End<input type="time" id="fEnd" required></label>
+    </div>
+    <label>Repeats
+      <select id="fRepeat">
+        <option value="none">Once</option>
+        <option value="daily">Every day</option>
+        <option value="weekdays">Weekdays (Mon–Fri)</option>
+        <option value="custom">Selected days each week</option>
+      </select>
+    </label>
+    <label id="fDateWrap">Date<input type="date" id="fDate"></label>
+    <div id="fDaysWrap" hidden><label>Days</label><div class="chips" id="fDays"></div></div>
+    <label>Remind me
+      <select id="fRemind">
+        <option value="-1">No reminder</option>
+        <option value="0">At start</option>
+        <option value="5">5 min before</option>
+        <option value="10">10 min before</option>
+        <option value="15">15 min before</option>
+        <option value="30">30 min before</option>
+        <option value="60">1 hour before</option>
+      </select>
+    </label>
+    <div class="row" style="margin-top:16px">
+      <button type="button" id="fDelete" class="danger">Delete</button>
+      <button type="button" id="fCancel">Cancel</button>
+      <button type="submit" class="primary" id="fSave">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="catDlg">
+  <h3 style="margin:0">Categories</h3>
+  <div id="catList"></div>
+  <div class="catrow">
+    <input id="newCatName" placeholder="New category name">
+    <input type="color" id="newCatColor" value="#4f6ef7">
+    <button id="addCat">Add</button>
+  </div>
+  <div class="row" style="margin-top:16px"><button id="catClose" class="primary">Done</button></div>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const HOUR_PX = 48, START_H = 6, END_H = 23;
+
+const store = {
+  load(k, d){ try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
+  save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
+};
+const uid = () => Math.random().toString(36).slice(2, 10);
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m };
+const fmtT = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+
+/* ---------- default data ---------- */
+const DEFAULT_CATS = [
+  {id:'work', name:'Work', color:'#4f6ef7'},
+  {id:'health', name:'Health', color:'#2e9e6b'},
+  {id:'study', name:'Study', color:'#9b59d0'},
+  {id:'personal', name:'Personal', color:'#e08a1e'},
+];
+const WD = [1,2,3,4,5], ALL = [0,1,2,3,4,5,6];
+const mk = (title, cat, start, end, days, remind=10) =>
+  ({id:uid(), title, cat, start, end, repeat: days.length===7?'daily':'custom', days, date:'', remind});
+const defaultEvents = () => [
+  mk('Morning routine','personal','07:00','08:00',ALL,0),
+  mk('Deep work','work','09:00','12:00',WD),
+  mk('Lunch','personal','12:30','13:30',WD,0),
+  mk('Meetings / email','work','14:00','16:00',WD),
+  mk('Gym','health','18:00','19:00',[1,3,5],30),
+  mk('Study session','study','20:00','21:30',[2,4,6]),
+  mk('Plan next week','personal','17:00','17:30',[0],15),
+];
+
+let cats = store.load('rp.cats', DEFAULT_CATS);
+let events = store.load('rp.events', null) || defaultEvents();
+let settings = Object.assign({focus:25, short:5, long:15, every:4}, store.load('rp.settings', {}));
+let fired = store.load('rp.fired', {});
+let weekOffset = 0;
+const saveAll = () => { store.save('rp.cats', cats); store.save('rp.events', events); store.save('rp.settings', settings); };
+
+/* ---------- occurrences ---------- */
+function occursOn(ev, d){
+  const ds = iso(d), dow = d.getDay();
+  if (ev.repeat === 'none') return ev.date === ds;
+  if (ev.date && ds < ev.date) return false;
+  if (ev.repeat === 'daily') return true;
+  if (ev.repeat === 'weekdays') return dow >= 1 && dow <= 5;
+  return (ev.days || []).includes(dow);
+}
+const occurrences = d => events.filter(e => occursOn(e, d)).sort((a,b) => toMin(a.start)-toMin(b.start));
+const catOf = id => cats.find(c => c.id === id) || {name:'Other', color:'#7a8194'};
+
+function mondayOf(d){ const x = new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x }
+function weekDates(){
+  const m = mondayOf(new Date()); m.setDate(m.getDate() + weekOffset*7);
+  return Array.from({length:7}, (_,i) => { const d = new Date(m); d.setDate(m.getDate()+i); return d });
+}
+
+/* ---------- week render ---------- */
+function layoutLanes(list){
+  // assign side-by-side lanes to overlapping events
+  const items = list.map(e => ({e, s:toMin(e.start), f:toMin(e.end), lane:0, n:1}));
+  let cluster = [], clusterEnd = -1;
+  const flush = () => { const n = Math.max(1, ...cluster.map(i => i.lane+1)); cluster.forEach(i => i.n = n); cluster = [] };
+  for (const it of items){
+    if (it.s >= clusterEnd){ flush(); clusterEnd = -1 }
+    const used = cluster.filter(c => c.f > it.s).map(c => c.lane);
+    while (used.includes(it.lane)) it.lane++;
+    cluster.push(it); clusterEnd = Math.max(clusterEnd, it.f);
+  }
+  flush();
+  return items;
+}
+
+function renderWeek(){
+  const dates = weekDates(), todayIso = iso(new Date());
+  $('#range').textContent = `${dates[0].toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${dates[6].toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}`;
+  const head = $('#weekHead'), body = $('#weekBody');
+  head.replaceChildren(); body.replaceChildren();
+  head.append(document.createElement('div'));
+  const gut = document.createElement('div'); gut.className = 'gutter';
+  for (let h = START_H; h < END_H; h++){ const g = document.createElement('div'); g.textContent = `${String(h).padStart(2,'0')}:00`; gut.append(g) }
+  body.append(gut);
+
+  dates.forEach(d => {
+    const isToday = iso(d) === todayIso;
+    const dh = document.createElement('div'); dh.className = 'dh' + (isToday?' today':'');
+    dh.textContent = DAYS[d.getDay()];
+    const sm = document.createElement('small'); sm.textContent = d.getDate(); dh.append(sm);
+    head.append(dh);
+
+    const col = document.createElement('div'); col.className = 'col' + (isToday?' today':'');
+    col.style.height = (END_H-START_H)*HOUR_PX + 'px';
+    col.addEventListener('click', e => {
+      if (e.target !== col) return;
+      const mins = START_H*60 + Math.floor((e.offsetY/HOUR_PX)*60/30)*30;
+      openEvent(null, {date: iso(d), start: fmtT(mins), end: fmtT(Math.min(mins+60, 23*60+59))});
+    });
+    layoutLanes(occurrences(d)).forEach(({e, s, f, lane, n}) => {
+      const c = catOf(e.cat), el = document.createElement('div');
+      el.className = 'ev'; el.style.background = c.color;
+      el.style.top = ((s-START_H*60)/60*HOUR_PX) + 'px';
+      el.style.height = Math.max(18, (f-s)/60*HOUR_PX - 2) + 'px';
+      el.style.left = `calc(${lane/n*100}% + 2px)`; el.style.width = `calc(${100/n}% - 4px)`;
+      const b = document.createElement('b'); b.textContent = e.title;
+      const t = document.createElement('span'); t.textContent = `${e.start}–${e.end}`;
+      el.append(b, t);
+      el.addEventListener('click', () => openEvent(e));
+      col.append(el);
+    });
+    if (isToday){ const line = document.createElement('div'); line.className = 'now'; line.id = 'nowLine'; col.append(line) }
+    body.append(col);
+  });
+  updateNow();
+}
+function updateNow(){
+  const l = $('#nowLine'); if (!l) return;
+  const n = new Date(), m = n.getHours()*60 + n.getMinutes();
+  l.style.display = (m < START_H*60 || m > END_H*60) ? 'none' : '';
+  l.style.top = ((m-START_H*60)/60*HOUR_PX) + 'px';
+}
+
+function renderUpcoming(){
+  const ul = $('#upcoming'); ul.replaceChildren();
+  const n = new Date(), nowM = n.getHours()*60 + n.getMinutes();
+  const next = occurrences(n).filter(e => toMin(e.end) > nowM).slice(0, 5);
+  if (!next.length){ const li = document.createElement('li'); li.className = 'muted'; li.textContent = 'Nothing left today.'; ul.append(li); return }
+  next.forEach(e => {
+    const li = document.createElement('li'), dot = document.createElement('span');
+    dot.className = 'dot'; dot.style.background = catOf(e.cat).color;
+    const t = document.createElement('span'); t.textContent = `${e.start} ${e.title}`; t.style.flex = '1';
+    const b = document.createElement('button'); b.textContent = 'Start'; b.style.padding = '2px 8px';
+    b.addEventListener('click', () => startActivity(e));
+    li.append(dot, t, b); ul.append(li);
+  });
+}
+
+/* ---------- event dialog ---------- */
+let editing = null;
+const evDlg = $('#evDlg');
+function buildDayChips(sel){
+  const w = $('#fDays'); w.replaceChildren();
+  [1,2,3,4,5,6,0].forEach(i => {
+    const l = document.createElement('label'), cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = i; cb.checked = sel.includes(i);
+    l.append(cb, DAYS[i]); w.append(l);
+  });
+}
+function syncRepeatUI(){
+  const r = $('#fRepeat').value;
+  $('#fDaysWrap').hidden = r !== 'custom';
+  $('#fDateWrap').firstChild.textContent = r === 'none' ? 'Date' : 'Starting from (optional)';
+}
+function openEvent(ev, preset={}){
+  editing = ev;
+  $('#evTitleH').textContent = ev ? 'Edit event' : 'New event';
+  $('#fDelete').hidden = !ev;
+  $('#fCat').replaceChildren(...cats.map(c => new Option(c.name, c.id)));
+  const v = ev || {title:'', cat:cats[0]?.id, start:'09:00', end:'10:00', repeat:'none', days:[], date:iso(new Date()), remind:10, ...preset};
+  $('#fTitle').value = v.title; $('#fCat').value = v.cat; $('#fStart').value = v.start; $('#fEnd').value = v.end;
+  $('#fRepeat').value = v.repeat; $('#fDate').value = v.date; $('#fRemind').value = String(v.remind);
+  buildDayChips(v.days || []); syncRepeatUI();
+  evDlg.showModal(); $('#fTitle').focus();
+}
+$('#fRepeat').addEventListener('change', syncRepeatUI);
+$('#fCancel').addEventListener('click', () => evDlg.close());
+$('#fDelete').addEventListener('click', () => {
+  events = events.filter(e => e !== editing); saveAll(); evDlg.close(); renderAll();
+});
+$('#evForm').addEventListener('submit', e => {
+  const start = $('#fStart').value, end = $('#fEnd').value, repeat = $('#fRepeat').value;
+  const days = [...$('#fDays').querySelectorAll('input:checked')].map(i => +i.value);
+  if (toMin(end) <= toMin(start)){ e.preventDefault(); toast('End time must be after start time.'); return }
+  if (repeat === 'none' && !$('#fDate').value){ e.preventDefault(); toast('Pick a date.'); return }
+  if (repeat === 'custom' && !days.length){ e.preventDefault(); toast('Pick at least one day.'); return }
+  const data = {title:$('#fTitle').value.trim(), cat:$('#fCat').value, start, end, repeat, days, date:$('#fDate').value, remind:+$('#fRemind').value};
+  if (editing) Object.assign(editing, data); else events.push({id:uid(), ...data});
+  saveAll(); renderAll();
+});
+
+/* ---------- categories dialog ---------- */
+function renderCats(){
+  const box = $('#catList'); box.replaceChildren();
+  cats.forEach(c => {
+    const r = document.createElement('div'); r.className = 'catrow';
+    const col = document.createElement('input'); col.type = 'color'; col.value = c.color;
+    col.addEventListener('change', () => { c.color = col.value; saveAll(); renderAll() });
+    const name = document.createElement('input'); name.value = c.name;
+    name.addEventListener('change', () => { c.name = name.value.trim() || c.name; saveAll(); renderAll() });
+    const del = document.createElement('button'); del.textContent = '✕'; del.className = 'danger'; del.style.flex = 'none';
+    del.addEventListener('click', () => {
+      if (cats.length === 1) return toast('Keep at least one category.');
+      cats = cats.filter(x => x !== c); events.forEach(e => { if (e.cat === c.id) e.cat = cats[0].id });
+      saveAll(); renderCats(); renderAll();
+    });
+    r.append(col, name, del); box.append(r);
+  });
+}
+$('#catBtn').addEventListener('click', () => { renderCats(); $('#catDlg').showModal() });
+$('#catClose').addEventListener('click', () => $('#catDlg').close());
+$('#addCat').addEventListener('click', () => {
+  const n = $('#newCatName').value.trim(); if (!n) return;
+  cats.push({id:uid(), name:n, color:$('#newCatColor').value});
+  $('#newCatName').value = ''; saveAll(); renderCats(); renderAll();
+});
+
+/* ---------- header buttons ---------- */
+$('#prev').addEventListener('click', () => { weekOffset--; renderWeek() });
+$('#next').addEventListener('click', () => { weekOffset++; renderWeek() });
+$('#todayBtn').addEventListener('click', () => { weekOffset = 0; renderWeek() });
+$('#addBtn').addEventListener('click', () => openEvent(null));
+$('#resetBtn').addEventListener('click', () => {
+  if (!confirm('Replace all events and categories with the default weekly schedule?')) return;
+  cats = structuredClone(DEFAULT_CATS); events = defaultEvents(); fired = {}; store.save('rp.fired', fired);
+  saveAll(); renderAll();
+});
+function updateNotifBtn(){ $('#notifBtn').hidden = !('Notification' in window) || Notification.permission !== 'default' }
+$('#notifBtn').addEventListener('click', async () => { await Notification.requestPermission(); updateNotifBtn() });
+
+/* ---------- alerts ---------- */
+let audioCtx;
+function beep(){
+  try {
+    audioCtx = audioCtx || new AudioContext();
+    [0, .25].forEach(t => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; g.gain.value = .15; o.connect(g); g.connect(audioCtx.destination);
+      o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + .18);
+    });
+  } catch {}
+}
+function toast(msg, ms=6000, action){
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  if (action){
+    const b = document.createElement('button'); b.textContent = action.label; b.className = 'primary';
+    b.addEventListener('click', () => { action.fn(); t.remove() });
+    t.append(document.createElement('br'), b);
+  }
+  $('#toasts').append(t); setTimeout(() => t.remove(), ms);
+}
+function alertUser(title, body, ev){
+  toast(`${title} — ${body}`, ev ? 60000 : 10000, ev && {label:'Start this activity now', fn:() => startActivity(ev)}); beep();
+  if ('Notification' in window && Notification.permission === 'granted'){
+    try { new Notification(title, {body}) } catch {}
+  }
+}
+function checkReminders(){
+  const n = new Date(), nowM = n.getHours()*60 + n.getMinutes(), ds = iso(n);
+  occurrences(n).forEach(e => {
+    if (e.remind < 0) return;
+    const key = e.id + ds;
+    if (fired[key]) return;
+    if (nowM >= toMin(e.start) - e.remind && nowM < toMin(e.end)){
+      fired[key] = Date.now();
+      const left = toMin(e.start) - nowM;
+      alertUser(e.title, left > 0 ? `starts in ${left} min (${e.start})` : `started at ${e.start}`, e);
+    }
+  });
+  for (const k in fired) if (Date.now() - fired[k] > 3*864e5) delete fired[k];
+  store.save('rp.fired', fired);
+}
+
+/* ---------- pomodoro ---------- */
+const P = {phase:'focus', left:0, endAt:0, running:false, done: store.load('rp.pomoDone', {n:0, d:''}), cycle:0, activity:null};
+if (P.done.d !== iso(new Date())) P.done = {n:0, d:iso(new Date())};
+let focusLog = store.load('rp.focusLog', []).filter(l => l.d === iso(new Date()));
+function focusSummary(){
+  const by = {}; focusLog.forEach(l => by[l.cat] = (by[l.cat]||0) + l.min);
+  return Object.entries(by).map(([c,m]) => `${catOf(c).name} ${m}m`).join(' · ');
+}
+function startActivity(ev){
+  // the user says "I'm starting this now": the timer runs on the real clock from this moment
+  P.activity = {id:ev.id, title:ev.title, cat:ev.cat, end:ev.end, startedAt:Date.now()};
+  P.phase = 'focus'; P.left = phaseLen('focus'); P.endAt = Date.now() + P.left*1000; P.running = true;
+  toast(`Started "${ev.title}" at ${new Date().toTimeString().slice(0,5)}`);
+  pomoDraw();
+}
+$('#activity').addEventListener('click', e => { if (e.target.tagName === 'BUTTON'){ P.activity = null; pomoDraw() } });
+const phaseLen = p => settings[p] * 60;
+const phaseName = {focus:'Focus', short:'Short break', long:'Long break'};
+function pomoReset(){ P.running = false; P.left = phaseLen(P.phase); pomoDraw() }
+function pomoDraw(){
+  const left = P.running ? Math.max(0, Math.round((P.endAt - Date.now())/1000)) : P.left;
+  const txt = `${String(Math.floor(left/60)).padStart(2,'0')}:${String(left%60).padStart(2,'0')}`;
+  $('#timer').textContent = txt; $('#phase').textContent = phaseName[P.phase];
+  $('#sessions').textContent = `${P.done.n} focus session${P.done.n===1?'':'s'} today` + (focusLog.length ? ` — ${focusSummary()}` : '');
+  const act = $('#activity'); act.replaceChildren();
+  if (P.activity){
+    act.append(`Working on: ${P.activity.title} (ends ${P.activity.end}) `);
+    const x = document.createElement('button'); x.textContent = 'Stop'; x.style.padding = '1px 8px'; act.append(x);
+  }
+  $('#pStart').textContent = P.running ? 'Pause' : 'Start';
+  document.title = P.running ? `${txt} · ${phaseName[P.phase]}` : 'Reminder Planner';
+}
+function pomoNext(completed){
+  if (P.phase === 'focus'){
+    if (completed){
+      P.done.n++; store.save('rp.pomoDone', P.done);
+      focusLog.push({d:iso(new Date()), cat:P.activity?.cat || 'other', title:P.activity?.title || '', min:settings.focus});
+      store.save('rp.focusLog', focusLog);
+    }
+    P.cycle++;
+    P.phase = P.cycle % settings.every === 0 ? 'long' : 'short';
+  } else P.phase = 'focus';
+  pomoReset();
+}
+$('#pStart').addEventListener('click', () => {
+  if (P.running){ P.left = Math.max(0, Math.round((P.endAt - Date.now())/1000)); P.running = false }
+  else { P.endAt = Date.now() + P.left*1000; P.running = true; if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(updateNotifBtn) }
+  pomoDraw();
+});
+$('#pSkip').addEventListener('click', () => pomoNext(false));
+$('#pReset').addEventListener('click', pomoReset);
+[['sFocus','focus'],['sShort','short'],['sLong','long'],['sEvery','every']].forEach(([id,k]) => {
+  const el = $('#'+id); el.value = settings[k];
+  el.addEventListener('change', () => {
+    settings[k] = Math.max(1, +el.value || settings[k]); el.value = settings[k]; saveAll();
+    if (!P.running) pomoReset();
+  });
+});
+function pomoTick(){
+  if (P.running && Date.now() >= P.endAt){
+    const was = P.phase; pomoNext(true);
+    alertUser(was === 'focus' ? 'Focus session done' : 'Break over', `Next: ${phaseName[P.phase]} (press Start)`);
+  }
+  pomoDraw();
+}
+
+/* ---------- theme (dark by default) ---------- */
+function setTheme(t){ document.documentElement.dataset.theme = t; store.save('rp.theme', t) }
+setTheme(store.load('rp.theme', 'dark'));
+$('#themeBtn').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+/* ---------- boot ---------- */
+function renderAll(){ renderWeek(); renderUpcoming() }
+renderAll(); pomoReset(); updateNotifBtn(); checkReminders();
+setInterval(() => { pomoTick(); updateNow() }, 500);
+setInterval(() => { checkReminders(); renderUpcoming() }, 10000);
+document.addEventListener('DOMContentLoaded', () => {});
+</script>
+</body>
+</html>

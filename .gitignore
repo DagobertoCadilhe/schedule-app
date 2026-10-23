@@ -1,0 +1,19 @@
+# dependencies and build output
+node_modules
+dist
+
+# your personal data: database, its backups, exported backups
+data
+*.db
+*.db-shm
+*.db-wal
+*backup*.json
+stash-*.json
+
+# local tool / assistant files
+.claude
+CLAUDE.md
+
+# secrets
+.env
+.env.*
