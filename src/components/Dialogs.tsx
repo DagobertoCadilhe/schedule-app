@@ -3,6 +3,7 @@ import { db, exportAll, importAll, patchSettings, loadSampleWeek, clearAllData }
 import { toast } from '../toasts'
 import { flushSync, touch, useSyncStatus } from '../sync'
 import { uid } from '../util'
+import { describe, importIcs, syncCanvas } from '../canvas'
 import type { Category, Settings } from '../types'
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -66,6 +67,7 @@ export function SettingsDialog({ settings, onClose }: { settings: Settings; onCl
         </button>
       </div>
       <StorageInfo />
+      <CanvasImport settings={settings} />
       <h4>Backups and sample data</h4>
       <div className="row">
         <button onClick={exportAll}>Export backup</button>
@@ -97,6 +99,49 @@ export function InstallHelp({ onClose }: { onClose: () => void }) {
       <h4>Your data</h4>
       <p>The installed app keeps its own copy. Use <b>Settings → Export backup</b> and then <b>Import backup</b> to move data between addresses.</p>
     </Modal>
+  )
+}
+
+function CanvasImport({ settings }: { settings: Settings }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [url, setUrl] = useState(settings.canvasUrl)
+  const [busy, setBusy] = useState(false)
+  const run = async (job: () => Promise<Parameters<typeof describe>[0]>) => {
+    setBusy(true)
+    try { toast(describe(await job()), { ms: 8000 }) } catch (err) { toast(`Canvas import failed: ${(err as Error).message}`) }
+    setBusy(false)
+  }
+  const sync = () => run(async () => {
+    const u = url.trim()
+    if (!u) throw new Error('paste your Canvas calendar feed link first')
+    const r = await syncCanvas(u)
+    await patchSettings({ canvasUrl: u })
+    return r
+  })
+  return (
+    <>
+      <h4>Canvas calendar</h4>
+      <p className="small muted">
+        In Canvas open <b>Calendar</b>, click <b>Calendar Feed</b> (bottom right) and copy the link. Classes and calendar events
+        become events; assignments become date reminders, one category per course. Re-importing updates them; the saved link is
+        re-checked every 6 hours while the app is open. Keep the link private: it gives read access to your Canvas calendar.
+      </p>
+      <label>Feed link
+        <input type="url" placeholder="https://yourschool.instructure.com/feeds/calendars/user_….ics" value={url}
+          onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void sync() } }} />
+      </label>
+      {settings.canvasSyncedAt > 0 && <p className="small muted">Last imported {new Date(settings.canvasSyncedAt).toLocaleString()}</p>}
+      <div className="row">
+        <button className="primary" disabled={busy} onClick={sync}>{busy ? 'Importing…' : 'Import from Canvas'}</button>
+        <button disabled={busy} onClick={() => fileRef.current?.click()}>Upload .ics file</button>
+        {settings.canvasUrl && <button disabled={busy} onClick={async () => { await patchSettings({ canvasUrl: '' }); setUrl(''); toast('Canvas link removed; imported items are kept') }}>Forget link</button>}
+        <input ref={fileRef} type="file" accept=".ics,text/calendar" hidden
+          onChange={e => {
+            const f = e.target.files?.[0]; e.target.value = ''
+            if (f) void run(async () => importIcs(await f.text()))
+          }} />
+      </div>
+    </>
   )
 }
 

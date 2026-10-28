@@ -41,6 +41,8 @@ export interface Settings {
   stopAtEventEnd: boolean
   sound: boolean
   theme: 'dark' | 'light' | 'auto'
+  canvasUrl: string // Canvas calendar feed (.ics) link; '' = not set up
+  canvasSyncedAt: number // ms timestamp of the last successful Canvas import
 }
 
 export interface PomoState {
@@ -56,6 +58,7 @@ export interface PomoState {
 export const DEFAULT_SETTINGS: Settings = {
   focus: 25, short: 5, long: 15, every: 4,
   autoStart: false, stopAtEventEnd: true, sound: true, theme: 'dark',
+  canvasUrl: '', canvasSyncedAt: 0,
 }
 
 export interface Task {

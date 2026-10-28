@@ -91,6 +91,19 @@ async function api(req, res, url) {
     fs.writeFileSync(path.join(backupDir, `stash-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.json`), text)
     return send(res, 200, { ok: true })
   }
+  if (url.pathname === '/api/ics' && req.method === 'POST') {
+    // fetches a calendar feed (e.g. Canvas) for the app, since the browser can't read other sites directly
+    let feed
+    try { feed = new URL(String(JSON.parse(await body(req, 4096)).url).trim().replace(/^webcals?:/i, 'https:')) } catch { return send(res, 400, { error: 'invalid feed link' }) }
+    if (feed.protocol !== 'https:') return send(res, 400, { error: 'the feed link must start with https://' })
+    let r
+    try { r = await fetch(feed, { signal: AbortSignal.timeout(20000), headers: { Accept: 'text/calendar' } }) } catch { return send(res, 502, { error: 'could not reach the feed' }) }
+    if (!r.ok) return send(res, 502, { error: `the feed answered ${r.status}` })
+    const text = await r.text()
+    if (text.length > 20 * 1024 * 1024) return send(res, 502, { error: 'the feed is too large' })
+    if (!/BEGIN:VCALENDAR/.test(text)) return send(res, 502, { error: 'that link is not a calendar feed' })
+    return send(res, 200, { text })
+  }
   return send(res, 404, { error: 'not found' })
 }
 

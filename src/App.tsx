@@ -16,6 +16,7 @@ import { CategoriesDialog, InstallHelp, SettingsDialog } from './components/Dial
 import { isInstalled, useInstall } from './pwa'
 import { Search } from './components/Search'
 import { useSyncStatus } from './sync'
+import { syncCanvas } from './canvas'
 import { MarkDialog, MarkPop, UpcomingMarks, type MarkApi } from './components/Marks'
 import type { Mark, Occ, PEvent, Task } from './types'
 import { addDays, iso, mondayOf, nowMin, occsOn, occursOn, parseIso, toMin, uid } from './util'
@@ -63,6 +64,18 @@ function Shell() {
 
   useReminders(events, marks, settings, startActivity, m => setMarkDlg({ mark: m, date: m.date, mode: 'view' }))
   useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 15000); return () => clearInterval(t) }, [])
+
+  // keep the Canvas import fresh: re-check the saved feed every 6 hours while the app is open
+  useEffect(() => {
+    if (!settings.canvasUrl) return
+    const check = () => {
+      if (Date.now() - settings.canvasSyncedAt < 6 * 3600_000) return
+      syncCanvas(settings.canvasUrl).catch(() => undefined) // quiet: a manual import shows any error
+    }
+    check()
+    const t = setInterval(check, 30 * 60_000)
+    return () => clearInterval(t)
+  }, [settings.canvasUrl, settings.canvasSyncedAt])
 
   useEffect(() => {
     const apply = () => {
