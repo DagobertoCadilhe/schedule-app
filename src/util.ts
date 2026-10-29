@@ -43,3 +43,9 @@ export const countdown = (date: string) => {
   const n = daysUntil(date)
   return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : n > 0 ? `In ${n} days` : `${-n} days ago`
 }
+
+/** Marks (date reminders) may carry a time of day; without one they are all-day. */
+export const markEnd = (m: { time?: string; endTime?: string }) =>
+  m.endTime ?? fmtT(Math.min(24 * 60 - 1, toMin(m.time ?? '00:00') + 30))
+export const markWhen = (m: { time?: string; endTime?: string }) =>
+  m.time ? (m.endTime ? `${m.time}–${m.endTime}` : m.time) : 'All day'

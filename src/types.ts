@@ -90,6 +90,10 @@ export interface Mark {
   description: string
   catId: string
   notify: number // alert from N days before the date; -1 = no alert
+  time?: string // HH:MM start; missing = all-day
+  endTime?: string // optional HH:MM end (timed only)
+  remindMin?: number // timed only: minutes before `time` to alert on the day; -1 = none (default 15)
+  done?: boolean // marked as done: shown struck through, no more alerts
 }
 
 /** A countdown timer of any length the user picks. */
