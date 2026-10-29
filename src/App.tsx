@@ -18,7 +18,7 @@ import { Search } from './components/Search'
 import { useSyncStatus } from './sync'
 import { MarkDialog, MarkPop, UpcomingMarks, type MarkApi } from './components/Marks'
 import type { Mark, Occ, PEvent, Task } from './types'
-import { addDays, iso, mondayOf, nowMin, occsOn, occursOn, parseIso, toMin, uid } from './util'
+import { addDays, iso, markEnd, mondayOf, nowMin, occsOn, occursOn, parseIso, toMin, uid } from './util'
 
 type View = 'day' | 'week' | 'month' | 'stats'
 type Editor = { ev: PEvent | null; draft: PEvent; date: string } | null
@@ -115,6 +115,7 @@ function Shell() {
   if (!events || !cats || !marks || !tasks) return null
   const byDate = new Map<string, Mark[]>()
   marks.forEach(m => byDate.set(m.date, [...(byDate.get(m.date) ?? []), m]))
+  byDate.forEach(list => list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? '')))
   const markApi: MarkApi = {
     byDate,
     color: m => cats.find(c => c.id === m.catId)?.color ?? '#ff8a3d',
@@ -204,6 +205,24 @@ function Shell() {
   const todays = occsOn(events, todayD)
   const next = todays.filter(o => toMin(o.end) > nm && !o.done).slice(0, 6)
   const doneToday = todays.filter(o => o.done).length
+  const todayMarks = (byDate.get(iso(todayD)) ?? []).filter(m => m.time && !m.done && toMin(markEnd(m)) > nm)
+  const nextRows = [
+    ...next.map(o => ({ kind: 'ev' as const, t: toMin(o.start), o })),
+    ...todayMarks.map(m => ({ kind: 'mark' as const, t: toMin(m.time!), m })),
+  ].sort((a, b) => a.t - b.t).slice(0, 6)
+  const evRow = (o: Occ) => (
+    <li key={o.ev.id}>
+      <span className="dot" style={{ background: catOf(o.catId)?.color }} />
+      <span className="grow"><b>{o.start}</b> {o.title}{o.adjusted && <small className="muted"> · adjusted</small>}</span>
+      <button onClick={() => startActivity({ eventId: o.ev.id, title: o.title, catId: o.catId, end: o.end })}>Start</button>
+    </li>
+  )
+  const markRow = (m: Mark) => (
+    <li key={'m' + m.id} className="clickable" onClick={() => markApi.open(m)}>
+      <span className="dot" style={{ background: markApi.color(m) }} />
+      <span className="grow"><b>{m.time}</b> ⚑ {m.title}{m.endTime && <small className="muted"> – {m.endTime}</small>}</span>
+    </li>
+  )
   const catOf = (id: string) => cats.find(c => c.id === id)
   const fmt = (d: Date, o: Intl.DateTimeFormatOptions) => d.toLocaleDateString(undefined, o)
   const title = view === 'day' ? fmt(dates[0], { weekday: 'long', month: 'long', day: 'numeric' })
@@ -259,15 +278,8 @@ function Shell() {
             <section className="card">
               <h2>Next up today</h2>
               <ul className="upcoming">
-                {next.length === 0 && <li className="muted">Nothing left today.</li>}
-                {next.map(o => (
-                  <li key={o.ev.id}>
-                    <span className="dot" style={{ background: catOf(o.catId)?.color }} />
-                    <span className="grow"><b>{o.start}</b> {o.title}{o.adjusted && <small className="muted"> · adjusted</small>}</span>
-                    <button className="ok" title="Mark done for today" aria-label={`Mark ${o.title} done`} onClick={() => setDone(o.ev.id, o.date, true)}>✓</button>
-                    <button onClick={() => startActivity({ eventId: o.ev.id, title: o.title, catId: o.catId, end: o.end })}>Start</button>
-                  </li>
-                ))}
+                {nextRows.length === 0 && <li className="muted">Nothing left today.</li>}
+                {nextRows.map(r => r.kind === 'mark' ? markRow(r.m) : evRow(r.o))}
               </ul>
               {doneToday > 0 && <p className="muted small done-count">✓ {doneToday} done today</p>}
             </section>

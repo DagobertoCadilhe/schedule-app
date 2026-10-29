@@ -37,7 +37,7 @@ export function Search({ events, tasks, marks, cats, onClose, onEvent, onTask, o
     const all: Hit[] = [
       ...events.map<Hit>(e => ({ kind: 'event', id: e.id, title: e.title, catId: e.catId, ev: e, sub: `${repeatText(e)} · ${e.start}–${e.end}`, })),
       ...tasks.map<Hit>(t => ({ kind: 'task', id: t.id, title: t.title, catId: t.catId, task: t, sub: t.done ? 'Done' : t.due ? `Due ${t.due}` : 'Task' })),
-      ...marks.map<Hit>(m => ({ kind: 'date', id: m.id, title: m.title, catId: m.catId, mark: m, sub: `${m.date} · ${countdown(m.date)}` })),
+      ...marks.map<Hit>(m => ({ kind: 'date', id: m.id, title: m.title, catId: m.catId, mark: m, sub: `${m.date}${m.time ? ' ' + m.time : ''} · ${m.done ? 'done' : countdown(m.date)}` })),
     ]
     const needle = q.trim().toLowerCase()
     const extra = (h: Hit) => h.kind === 'event' ? h.ev.notes : h.kind === 'date' ? h.mark.description : ''

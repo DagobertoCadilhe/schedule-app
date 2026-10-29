@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { db } from './db'
 import { notify, toast } from './toasts'
-import { daysUntil, iso, nowMin, occsOn, toMin } from './util'
+import { daysUntil, iso, markEnd, nowMin, occsOn, toMin } from './util'
 import type { Mark, PEvent, Settings, StartSrc } from './types'
 
 /** Fires a toast + sound + system notification once per event occurrence, at (start - remind). */
@@ -32,14 +32,31 @@ export function useReminders(events: PEvent[] | undefined, marks: Mark[] | undef
       }
       // date reminders: alert once a day (after 08:00) from `notify` days before the date until the day itself
       for (const mk of (dates ?? [])) {
+        if (mk.done) continue
+        // timed reminders also alert on the day itself, shortly before their time
+        const lead = mk.remindMin ?? 15
+        if (mk.time && mk.date === ds && lead >= 0) {
+          const key2 = `markt:${mk.id}:${ds}`
+          if (!seen.has(key2) && m >= toMin(mk.time) - lead && m < toMin(markEnd(mk))) {
+            seen.add(key2)
+            if (!(await db.fired.get(key2))) {
+              await db.fired.put({ key: key2, at: Date.now() })
+              const away = toMin(mk.time) - m
+              const body = away > 0 ? `starts in ${away} min (${mk.time})` : `started at ${mk.time}`
+              notify(mk.title, body, cfg.sound)
+              toast(`⚑ ${mk.title} — ${body}`, { ms: 60000, action: { label: 'Details', fn: () => onOpenMark(mk) } })
+            }
+          }
+        }
         const left = daysUntil(mk.date)
         if (mk.notify < 0 || left < 0 || left > mk.notify || m < 8 * 60) continue
+        if (mk.time && left === 0 && lead >= 0) continue // the timed alert above covers the day itself
         const key = `mark:${mk.id}:${ds}`
         if (seen.has(key)) continue
         seen.add(key)
         if (await db.fired.get(key)) continue
         await db.fired.put({ key, at: Date.now() })
-        const when = left === 0 ? 'is today' : left === 1 ? 'is tomorrow' : `is in ${left} days`
+        const when = (left === 0 ? 'is today' : left === 1 ? 'is tomorrow' : `is in ${left} days`) + (mk.time ? ` at ${mk.time}` : '')
         notify(mk.title, when, cfg.sound)
         toast(`${mk.title} ${when}`, { ms: 60000, action: { label: 'Details', fn: () => onOpenMark(mk) } })
       }

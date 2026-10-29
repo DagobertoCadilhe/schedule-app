@@ -92,6 +92,11 @@ export async function setDone(eventId: string, date: string, done: boolean) {
   })
 }
 
+/** Marks a date reminder as done (or not done). */
+export async function setMarkDone(id: string, done: boolean) {
+  await db.marks.update(id, { done })
+}
+
 export async function exportAll() {
   const data = {
     version: 1,

@@ -32,9 +32,9 @@ export function Month({ anchor, events, cats, onPickDay, onOpen, marks }: Props)
               style={ms.length ? { ['--m' as string]: marks.color(ms[0]) } : undefined} onClick={() => onPickDay(d)}>
               <div className="mhead"><b>{d.getDate()}</b><button className="addmark" title="Add date reminder" onClick={e => { e.stopPropagation(); marks.add(iso(d)) }}>+</button></div>
               {ms.map(m => (
-                <button key={m.id} className="mk" style={{ ['--m' as string]: marks.color(m) }}
+                <button key={m.id} className={'mk' + (m.done ? ' done' : '')} style={{ ['--m' as string]: marks.color(m) }}
                   onMouseEnter={e => marks.hover([m], e.currentTarget)} onMouseLeave={() => marks.hover(null)}
-                  onClick={e => { e.stopPropagation(); marks.hover(null); marks.open(m) }}>⚑ {m.title}</button>
+                  onClick={e => { e.stopPropagation(); marks.hover(null); marks.open(m) }}>{m.done ? '✓' : '⚑'} {m.time ? m.time + ' ' : ''}{m.title}</button>
               ))}
               {occs.slice(0, 3).map(o => (
                 <button key={o.ev.id} className={'chip' + (o.done ? ' done' : '')} style={{ '--c': color(o.catId) } as CSSProperties}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { Activity, Category, Occ, PEvent } from '../types'
+import type { Activity, Category, Mark, Occ, PEvent } from '../types'
 import type { MarkApi } from './Marks'
-import { DAYS, HOUR_PX, clamp, fmtT, iso, nowMin, occsOn, toMin } from '../util'
+import { DAYS, HOUR_PX, clamp, fmtT, iso, markEnd, markWhen, nowMin, occsOn, toMin } from '../util'
 
 interface Props {
   dates: Date[]
@@ -27,12 +27,13 @@ interface Drag {
   f0: number
 }
 interface Sel { date: string; a: number; b: number; moved: boolean }
-interface Item { occ: Occ; s: number; f: number; dragging: boolean; lane: number; n: number }
+type Entry = { s: number; f: number; dragging: boolean } & ({ occ: Occ; mark?: undefined } | { mark: Mark; occ?: undefined })
+type Item = Entry & { lane: number; n: number }
 
 const SNAP = 15
 const snap = (m: number) => Math.round(m / SNAP) * SNAP
 
-function lanes(items: Omit<Item, 'lane' | 'n'>[]): Item[] {
+function lanes(items: Entry[]): Item[] {
   const sorted = [...items].sort((a, b) => a.s - b.s || a.f - b.f)
   const out: Item[] = []
   let cluster: Item[] = [], end = -1
@@ -108,6 +109,25 @@ export function Grid({ dates, events, cats, activities, onCreate, onOpen, onMove
 
   const nowM = nowMin()
 
+  /** A date reminder with a time shows in the grid like an event, but it is read-only (click to open). */
+  const markBlock = (it: Item, m: Mark) => (
+    <div
+      key={'m' + m.id}
+      className={'ev mkev' + (m.done ? ' done' : '')}
+      style={{
+        '--c': marks.color(m),
+        top: it.s / 60 * HOUR_PX + 1, height: Math.max(22, (it.f - it.s) / 60 * HOUR_PX - 2),
+        left: `calc(${it.lane / it.n * 100}% + 3px)`, width: `calc(${100 / it.n}% - 9px)`,
+      } as CSSProperties}
+      onMouseEnter={e => marks.hover([m], e.currentTarget)}
+      onMouseLeave={() => marks.hover(null)}
+      onClick={() => { marks.hover(null); marks.open(m) }}
+    >
+      <b>{m.done ? '✓' : '⚑'} {m.title}</b>
+      <span>{markWhen(m)}</span>
+    </div>
+  )
+
   return (
     <div className="grid-scroll" ref={scrollRef}>
       <div className="grid-head">
@@ -117,9 +137,9 @@ export function Grid({ dates, events, cats, activities, onCreate, onOpen, onMove
             <div key={+d} className={'dh' + (iso(d) === today ? ' today' : '') + (marks.byDate.has(iso(d)) ? ' has-mark' : '')}>
               <span>{DAYS[d.getDay()]}</span><b>{d.getDate()}</b>
               {(marks.byDate.get(iso(d)) ?? []).map(m => (
-                <button key={m.id} className="mk" style={{ ['--m' as string]: marks.color(m) }}
+                <button key={m.id} className={'mk' + (m.done ? ' done' : '') + (m.time ? ' timed' : '')} style={{ ['--m' as string]: marks.color(m) }}
                   onMouseEnter={e => marks.hover([m], e.currentTarget)} onMouseLeave={() => marks.hover(null)}
-                  onClick={() => { marks.hover(null); marks.open(m) }}>⚑ {m.title}</button>
+                  onClick={() => { marks.hover(null); marks.open(m) }}>{m.done ? '✓' : '⚑'} {m.time ? m.time + ' ' : ''}{m.title}</button>
               ))}
             </div>
           ))}
@@ -132,10 +152,11 @@ export function Grid({ dates, events, cats, activities, onCreate, onOpen, onMove
         <div className="cols" ref={colsRef} style={{ gridTemplateColumns: `repeat(${dates.length}, 1fr)` }}>
           {dates.map(d => {
             const ds = iso(d)
-            const base = occsOn(events, d)
+            const base: Entry[] = occsOn(events, d)
               .filter(o => !(drag && drag.occ.ev.id === o.ev.id && drag.occ.date === ds))
               .map(occ => ({ occ, s: toMin(occ.start), f: toMin(occ.end), dragging: false }))
             if (drag && drag.date === ds) base.push({ occ: drag.occ, s: drag.s, f: drag.f, dragging: true })
+            for (const m of marks.byDate.get(ds) ?? []) if (m.time) base.push({ mark: m, s: toMin(m.time), f: Math.max(toMin(m.time) + 30, toMin(markEnd(m))), dragging: false })
             const acts = activities.filter(a => iso(new Date(a.startedAt)) === ds)
             const selHere = sel && sel.date === ds && sel.moved ? sel : null
             return (
@@ -153,7 +174,7 @@ export function Grid({ dates, events, cats, activities, onCreate, onOpen, onMove
                     {fmtT(Math.min(selHere.a, selHere.b))}–{fmtT(Math.max(selHere.a, selHere.b))}
                   </div>
                 )}
-                {lanes(base).map(it => (
+                {lanes(base).map(it => it.mark ? markBlock(it, it.mark) : (
                   <div
                     key={it.occ.ev.id + it.occ.date}
                     className={'ev' + (it.dragging ? ' dragging' : '') + (it.occ.adjusted ? ' adjusted' : '') + (it.occ.done ? ' done' : '')}
